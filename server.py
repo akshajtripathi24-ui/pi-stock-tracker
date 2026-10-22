@@ -1,6 +1,8 @@
 """Pi Stock Tracker - a small web app that tracks every US stock.
 
-Run:  python server.py   then open http://<your-pi-ip>:8000
+Run in the background:  bash setup-autostart.sh   (see README.md)
+Run by hand:            source venv/bin/activate && python server.py
+Then open http://<your-pi-ip>:8000
 Needs: pip install requests websocket-client
 Live prices: put your free Finnhub API key in finnhub_key.txt next to this file.
 Price alerts: install the free ntfy app and subscribe to the topic shown on the Alerts page.

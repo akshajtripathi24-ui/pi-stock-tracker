@@ -23,22 +23,49 @@ Open it from any phone or computer on your home Wi-Fi.
 
 ## Install
 
-On the Pi:
+On the Pi, download the project and install the two Python packages it needs:
 
 ```bash
-mkdir -p ~/stocktracker && cd ~/stocktracker
+sudo apt install -y git
+git clone https://github.com/akshajtripathi24-ui/pi-stock-tracker.git ~/stocktracker
+cd ~/stocktracker
 python3 -m venv venv
-source venv/bin/activate
-pip install requests websocket-client
+venv/bin/pip install requests websocket-client
 ```
 
-Copy `server.py`, `index.html` and `setup-autostart.sh` from this repo into `~/stocktracker`. Then start it:
+Then make it run in the background and start whenever the Pi boots:
 
 ```bash
-python server.py
+bash setup-autostart.sh
 ```
 
-Open `http://<your-pi-ip>:8000` in a browser. To find the IP address, run `hostname -I` on the Pi.
+Open `http://<your-pi-ip>:8000` in a browser on any device on the same Wi-Fi. To find the IP address, run `hostname -I` on the Pi.
+
+### Update to the latest version
+
+```bash
+cd ~/stocktracker && git pull && sudo systemctl restart stocktracker
+```
+
+Then refresh the website with **Ctrl+F5**. Your Finnhub key, alerts and downloaded history are kept.
+
+<details>
+<summary>Installed it before by copying the files by hand? Link the folder to GitHub once</summary>
+
+```bash
+cd ~/stocktracker
+sudo apt install -y git
+git init -q
+git remote add origin https://github.com/akshajtripathi24-ui/pi-stock-tracker.git
+git fetch origin
+git checkout -f -B main origin/main
+git branch -u origin/main
+git config pull.ff only
+sudo systemctl restart stocktracker
+```
+
+This replaces the code files with the latest version and keeps `venv`, `finnhub_key.txt`, `alerts.json` and the history files. If you never ran `setup-autostart.sh`, run `bash setup-autostart.sh` instead of the last line.
+</details>
 
 ### Live prices (optional)
 
@@ -48,17 +75,13 @@ Open `http://<your-pi-ip>:8000` in a browser. To find the IP address, run `hostn
    nano finnhub_key.txt          # paste the key, then Ctrl+O, Enter, Ctrl+X
    chmod 600 finnhub_key.txt     # make it private
    ```
-3. Restart the tracker. The badge in the top bar shows **● LIVE** while the market is open.
+3. Restart the tracker with `sudo systemctl restart stocktracker`. The badge in the top bar shows **● LIVE** while the market is open.
 
 `finnhub_key.txt` is listed in `.gitignore`, so it won't be committed to GitHub by accident. Keep your key private.
 
-### Run it all the time
+### Controlling the background service
 
-```bash
-bash setup-autostart.sh
-```
-
-The tracker then runs in the background, starts whenever the Pi boots, and restarts if it crashes.
+After `bash setup-autostart.sh`, the tracker runs in the background, starts whenever the Pi boots, and restarts if it crashes. You don't need to run `python server.py` yourself.
 
 | To do this | Run |
 |---|---|
@@ -66,6 +89,7 @@ The tracker then runs in the background, starts whenever the Pi boots, and resta
 | Restart (e.g. after changing the key) | `sudo systemctl restart stocktracker` |
 | Stop | `sudo systemctl stop stocktracker` |
 | Turn off auto-start | `sudo systemctl disable --now stocktracker` |
+| Run it by hand instead (stop the service first) | `cd ~/stocktracker && source venv/bin/activate && python server.py` |
 
 ### Price alerts on your phone
 
@@ -108,9 +132,11 @@ The first time it starts, the Pi spends about 2–3 hours slowly downloading a y
 | Problem | Fix |
 |---|---|
 | `Finnhub error: Subscribing to too many symbols` | Only run **one** copy per API key. Don't run `python server.py` while the background service is also running. |
+| `bash: python: command not found` | Use the background service (`bash setup-autostart.sh`). To run it by hand, first `cd ~/stocktracker && source venv/bin/activate`, then the line should start with `(venv)`. |
+| `git pull` shows orange "hint:" messages | Harmless. Run `git config pull.ff only` once to hide them. |
 | Badge says **● Connecting…** | Hover over it to see why. "Finnhub rejected the API key" means `finnhub_key.txt` is wrong. |
 | Badge says **● Live (market quiet)** | That's normal outside US market hours (9:30am–4pm Eastern, Mon–Fri). |
-| `Unit stocktracker.service not found` | Run `bash setup-autostart.sh` first. |
+| `Unit stocktracker.service not found` | Auto-start isn't set up yet. Run `cd ~/stocktracker && bash setup-autostart.sh`. |
 | `pip install` fails on an old Pi OS | This project only needs `requests` and `websocket-client`, which install fine on Bullseye. |
 | No alert notifications | Check the topic in the ntfy app matches the Alerts page exactly, then tap **Send test notification**. |
 | `http://raspberrypi:8000` doesn't open away from home | Make sure Tailscale is switched on in the phone app, or use the IP from `tailscale ip -4`. |
