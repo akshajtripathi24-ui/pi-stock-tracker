@@ -91,3 +91,7 @@ The first time it starts, the Pi spends about 2–3 hours slowly downloading a y
 
 - `server.py`: a small Python web server, using only the standard library plus `requests` and `websocket-client`. It downloads the stock list, crawls history in the background, streams live trades and serves a JSON API.
 - `index.html`: the whole website in one file (HTML, CSS and JavaScript). It uses [Chart.js](https://www.chartjs.org/) for charts.
+
+## License
+
+[MIT](LICENSE). You can use, change and share this project, as long as you keep the copyright notice.
