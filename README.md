@@ -20,6 +20,23 @@ Open it from any phone or computer on your home Wi-Fi.
 
 - A Raspberry Pi (tested on a Pi 4 with 4GB running Raspberry Pi OS Bullseye, Python 3.9) connected to the internet
 - Optional: a free API key from [finnhub.io](https://finnhub.io) for live prices
+- Optional: the free **ntfy** app for price alerts ([iPhone](https://apps.apple.com/app/ntfy/id1625396347), [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy))
+- Optional: the free **Tailscale** app to use it away from home ([iPhone](https://apps.apple.com/app/tailscale/id1470499037), [Android](https://play.google.com/store/apps/details?id=com.tailscale.ipn), [Windows, Mac and more](https://tailscale.com/download))
+
+## Connect to your Pi (SSH)
+
+You run the commands below on the Pi. The easiest way is from your computer over SSH, so you can copy and paste them:
+
+1. On Windows, press the **Windows key**, type `cmd` and press **Enter**. On a Mac, open **Terminal**.
+2. Connect, using your Pi's username (often `pi`) and IP address (run `hostname -I` on the Pi to find it). For example:
+   ```
+   ssh pi@192.168.1.143
+   ```
+3. Type the Pi's password. Nothing appears while you type, which is normal.
+
+You're connected when you see `pi@raspberrypi:~ $`. In the Windows window, **right-click** to paste. Type `exit` to leave.
+
+If SSH is turned off on the Pi, turn it on with `sudo systemctl enable --now ssh` (run on the Pi itself).
 
 ## Install
 
@@ -93,27 +110,46 @@ After `bash setup-autostart.sh`, the tracker runs in the background, starts when
 
 ### Price alerts on your phone
 
-1. Install the free **ntfy** app from the App Store or Google Play ([ntfy phone app guide](https://docs.ntfy.sh/subscribe/phone/)).
-2. Open the tracker's **🔔 Alerts** page. It shows a random topic name like `pi-stocks-1a2b3c4d5e6f7a8b`. In the app, tap **+** and subscribe to that topic.
-3. Tap **Send test notification** to check it works.
-4. Open any stock and use the **🔔 Price alerts** box to add an alert.
+1. Install the free **ntfy** app. No account needed.
+   - iPhone: [ntfy on the App Store](https://apps.apple.com/app/ntfy/id1625396347)
+   - Android: [ntfy on Google Play](https://play.google.com/store/apps/details?id=io.heckel.ntfy)
+2. Open the tracker's **🔔 Alerts** page. It shows a random topic name like `pi-stocks-1a2b3c4d5e6f7a8b`. Click **Copy**.
+3. In the ntfy app, tap **+**, paste the topic **exactly**, and tap **Subscribe**. Allow notifications if asked.
+4. On the Alerts page, tap **Send test notification**. Your phone should buzz within a few seconds.
+5. Open any stock and use the **🔔 Price alerts** box to add an alert. For example, "moves more than **3**% in a day".
 
-The Pi checks alerts every 10 seconds. A price alert fires once each time the price crosses your level, and a "% move" alert fires at most once a day. Alerts are saved in `alerts.json` on the Pi, which is in `.gitignore`. Keep your topic name private: anyone who knows it could read your alerts.
+The Pi checks alerts every 10 seconds. A price alert fires once each time the price **crosses** your level, so an "above $1" alert on a $500 stock waits until the price goes below $1 and back up. A "% move" alert fires at most once a day. Alerts only fire while the market is open, because that's when prices move. Alerts are saved in `alerts.json` on the Pi, which is in `.gitignore`. Keep your topic name private: anyone who knows it could read your alerts.
 
 ### Use it from anywhere, privately (Tailscale)
 
-[Tailscale](https://tailscale.com) is a free app that connects your own devices to each other, so you can open the tracker away from home without making it public. Ask a parent if you need help creating the account.
+[Tailscale](https://tailscale.com) is a free app that connects your own devices to each other, so you can open the tracker, and SSH into the Pi, away from home without making anything public. Only devices signed in to **your** account can reach it. You need an account: sign in with GitHub, Google, Microsoft or Apple. Ask a parent if you need help creating it.
 
-On the Pi:
+**1. On the Pi** (over SSH):
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-`sudo tailscale up` prints a login link. Open it and sign in. Then install the **Tailscale** app on your phone and sign in with the **same account**.
+`sudo tailscale up` prints a login link. Open it on your computer, sign in, and click **Connect**. Then run `tailscale ip -4` and note the address. It starts with `100.`.
 
-On your phone, with Tailscale switched on, open `http://raspberrypi:8000`. If that doesn't work, run `tailscale ip -4` on the Pi and open `http://<that-ip>:8000`. Tailscale starts by itself when the Pi boots.
+**2. On your phone:** install Tailscale, sign in with the **same account**, tap **Allow** when it asks to add a VPN configuration, and switch it on.
+- iPhone: [Tailscale on the App Store](https://apps.apple.com/app/tailscale/id1470499037)
+- Android: [Tailscale on Google Play](https://play.google.com/store/apps/details?id=com.tailscale.ipn)
+
+**3. On your computer (optional, for SSH from anywhere):** install Tailscale from the [Tailscale download page](https://tailscale.com/download) and sign in with the same account.
+
+**4. Test it:** turn your phone's Wi-Fi off (so you're on mobile data) and open `http://raspberrypi:8000`. If that doesn't load, use `http://100.x.x.x:8000` with the address from step 1. From your computer, `ssh pi@raspberrypi` works from anywhere too.
+
+**5. Keep the Pi signed in:** Tailscale signs devices out after about 6 months by default. In the [Tailscale admin console](https://login.tailscale.com/admin/machines), click **⋯** next to `raspberrypi` and choose **Disable key expiry**.
+
+Tailscale starts by itself when the Pi boots.
+
+**"It says I'm on a VPN"**: your phone and computer call Tailscale a VPN, but it only carries traffic between your own devices. Everything else goes to the internet as normal. You don't have to keep it on:
+- **Turn it off:** in the phone app, flip the switch off. On Windows, click the Tailscale icon by the clock and choose **Disconnect**. Turn it back on only when you want the tracker away from home. At home, just use `http://<your-pi-ip>:8000`.
+- **Remove it:** delete the phone app. On Windows, go to **Settings → Apps → Installed apps → Tailscale → Uninstall**. On the Pi, run `sudo tailscale down && sudo apt remove -y tailscale`.
+
+The tracker and your ntfy alerts keep working either way, because alerts don't need Tailscale.
 
 ## Where the data comes from
 
@@ -140,6 +176,8 @@ The first time it starts, the Pi spends about 2–3 hours slowly downloading a y
 | `pip install` fails on an old Pi OS | This project only needs `requests` and `websocket-client`, which install fine on Bullseye. |
 | No alert notifications | Check the topic in the ntfy app matches the Alerts page exactly, then tap **Send test notification**. |
 | `http://raspberrypi:8000` doesn't open away from home | Make sure Tailscale is switched on in the phone app, or use the IP from `tailscale ip -4`. |
+| An alert never fires | Price alerts fire only when the price **crosses** your level, and only during market hours. Test with "moves more than 0.1% in a day". |
+| `ssh: connect to host ... timed out` | Check the Pi is on and on the same Wi-Fi, and the IP is right (`hostname -I` on the Pi). Away from home, switch Tailscale on and use `ssh pi@raspberrypi`. |
 | Pi running hot | Check with `vcgencmd measure_temp`. With a small fan on pins 4 (5V) and 6 (GND), a Pi 4 stays around 35–50°C. |
 
 ## How it works
