@@ -342,6 +342,27 @@ async function fillMarket() {
   });
 }
 
+// Live prices change the % in the gainer/loser lists; re-rank them so the order stays right
+let rankDirty = false;
+function sortListNow(id, desc) {
+  const box = $("#" + id);
+  if (!box) return;
+  const items = [...box.querySelectorAll(".item")];
+  const val = el => parseFloat(el.querySelector("[data-lc]")?.textContent) || 0;
+  const sorted = [...items].sort((a, b) => desc ? val(b) - val(a) : val(a) - val(b));
+  if (sorted.some((el, i) => el !== items[i])) sorted.forEach(el => box.appendChild(el));
+}
+async function refreshRankings() {
+  rankDirty = false;
+  const p = marketState.period;
+  const q = `/api/screener?period=${p}&sort=${p}&mincap=${marketState.mincap}&limit=10`;
+  let gain, lose;
+  try { [gain, lose] = await Promise.all([api(q + "&order=desc"), api(q + "&order=asc")]); } catch { return; }
+  if (!$("#gainers") || p !== marketState.period) return;
+  $("#gainers").innerHTML = listHTML(gain.rows.filter(r => r[p] != null && r[p] >= 0), p);
+  $("#losers").innerHTML = listHTML(lose.rows.filter(r => r[p] != null && r[p] < 0), p);
+}
+
 let lastIdx = {};
 function drawIndices(list) {
   if (!$("#indices")) return;
@@ -507,7 +528,11 @@ function route() {
   if (name === "favorites") return renderFavorites();
   renderMarket();
   let ticks = 0;
-  refreshTimer = setInterval(() => { if (++ticks % 20 === 0) fillMarket(); else refreshIndices(); }, 3000);
+  refreshTimer = setInterval(() => {
+    if (++ticks % 20 === 0) return fillMarket();
+    refreshIndices();
+    if (rankDirty && ticks % 2 === 0) refreshRankings();
+  }, 3000);
 }
 
 // ---------- live prices ----------
@@ -541,7 +566,11 @@ async function pollLive() {
     const dir = before == null || before === q.p ? "" : q.p > before ? "flash-up" : "flash-down";
     const sel = CSS.escape(s);
     document.querySelectorAll(`[data-lp="${sel}"]`).forEach(el => { const t = money(q.p); if (el.textContent !== t) { el.textContent = t; if (dir) flash(el, dir); } });
-    document.querySelectorAll(`[data-lc="${sel}"]`).forEach(el => { el.textContent = pctTxt(q.c); el.className = (el.dataset.base ? el.dataset.base + " " : "") + cls(q.c); });
+    document.querySelectorAll(`[data-lc="${sel}"]`).forEach(el => {
+      const t = pctTxt(q.c);
+      if (el.textContent !== t && el.closest("#gainers, #losers")) rankDirty = true;
+      el.textContent = t; el.className = (el.dataset.base ? el.dataset.base + " " : "") + cls(q.c);
+    });
     document.querySelectorAll(`[data-lt="${sel}"]`).forEach(el => { el.textContent = todayTxt(q.n, q.c); el.className = cls(q.c); });
     if (chart && chart.liveSym === s && chart.liveRange === "1d" && q.live && dir && Date.now() - lastChartPush > 2000) {
       lastChartPush = Date.now();
@@ -551,7 +580,10 @@ async function pollLive() {
     }
   }
 }
-setInterval(pollLive, 1000);
+setInterval(async () => {
+  await pollLive();
+  if (rankDirty && marketState.period === "1d") { sortListNow("gainers", true); sortListNow("losers", false); }
+}, 1000);
 window.addEventListener("hashchange", route);
 
 (async function start() {
