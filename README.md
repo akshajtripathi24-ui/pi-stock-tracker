@@ -18,12 +18,17 @@ Open it on any phone, tablet or computer: at home on your Wi-Fi, or anywhere wit
 - **★ Favorites**, **light and dark mode**, and a layout that works on phones.
 - **Runs by itself:** starts when the Pi boots, restarts if it crashes, and updates with one command.
 
+## 👉 New here? Start with the checklist
+
+**[0. Start here: the whole project, step by step](docs/00-start-here.md)** takes you through all 27 steps in order, from an empty SD card to live prices, phone alerts and access from anywhere. Each step has the exact commands and a "You're done when…" check.
+
 ## Step-by-step guides
 
-Follow them in order the first time. Each one explains every step and command, with a "Problems?" table at the end.
+The checklist links to these when you need more detail. Each one explains every step and command, with a "Problems?" table at the end.
 
 | # | Guide | What you'll do | Needed? |
 |---|---|---|---|
+| 0 | [**Start here**](docs/00-start-here.md) | The whole project as one checklist, in order | ✅ Start here |
 | 1 | [Get your Raspberry Pi ready](docs/01-prepare-the-pi.md) | Install Raspberry Pi OS, turn on SSH, find the Pi's IP, connect from your computer | If your Pi isn't set up yet |
 | 2 | [Install the tracker](docs/02-install.md) | Download, install, auto-start, open the website, update, uninstall | ✅ Yes |
 | 3 | [Live prices](docs/03-live-prices.md) | Get a free Finnhub key and add it to the Pi | Optional |

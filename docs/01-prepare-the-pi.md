@@ -1,5 +1,7 @@
 # 1. Get your Raspberry Pi ready
 
+> New to the project? Follow [0. Start here](00-start-here.md) for every step in order.
+
 This guide gets a Raspberry Pi to the point where you can type commands on it from your computer. If your Pi already runs Raspberry Pi OS and you can SSH into it, skip to [2. Install the tracker](02-install.md).
 
 **You need:**
