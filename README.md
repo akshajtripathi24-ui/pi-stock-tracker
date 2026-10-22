@@ -15,6 +15,7 @@ Open it from any phone or computer on your home Wi-Fi.
 - **Live prices (optional):** with a free [Finnhub](https://finnhub.io) API key, the stock you're viewing, what's on screen and your favorites update with every trade and flash green or red.
 - **🔔 Price alerts:** get a notification on your phone when a stock rises above or falls below a price, or moves more than a set % in a day. Uses the free [ntfy](https://ntfy.sh) app, with no account needed.
 - **★ Favorites**, **light and dark mode**, and a layout that works on phones.
+- **Works on every device at once:** open it on your laptop, your phone and your family's phones. They all get live prices, with nothing to install. See [Use it on more devices](#use-it-on-more-devices-family-and-friends).
 
 ## What you need
 
@@ -122,7 +123,7 @@ The Pi checks alerts every 10 seconds. A price alert fires once each time the pr
 
 ### Use it from anywhere, privately (Tailscale)
 
-[Tailscale](https://tailscale.com) is a free app that connects your own devices to each other, so you can open the tracker, and SSH into the Pi, away from home without making anything public. Only devices signed in to **your** account can reach it. You need an account: sign in with GitHub, Google, Microsoft or Apple. Ask a parent if you need help creating it.
+[Tailscale](https://tailscale.com) is a free app that connects your own devices to each other, so you can open the tracker, and SSH into the Pi, away from home without making anything public. Only devices signed in to **your** account, or people you share the Pi with, can reach it. You need an account: sign in with GitHub, Google, Microsoft or Apple. Ask a parent if you need help creating it.
 
 **1. On the Pi** (over SSH):
 
@@ -151,6 +152,58 @@ Tailscale starts by itself when the Pi boots.
 
 The tracker and your ntfy alerts keep working either way, because alerts don't need Tailscale.
 
+### Use it on more devices (family and friends)
+
+**You don't install anything for live prices.** There's no "stock tracker app". The Pi does all the work, and any browser that opens the website gets live updates:
+
+```
+Finnhub ──live trades──▶  Your Pi  ──website──▶  your laptop
+(your key stays            (server.py)  ──website──▶  your phone
+ on the Pi)                             ──website──▶  family phones…
+```
+
+The Pi is the only thing that talks to Finnhub. Every open page asks the Pi for new prices every second, so every device sees prices tick with the **● LIVE** badge. Nobody else needs your key or any account.
+
+| What you want on the other device | What it needs |
+|---|---|
+| The website and live prices **at home** | Nothing. Open `http://<your-pi-ip>:8000` in any browser on the same Wi-Fi. |
+| The website **away from home** | Tailscale (see the options below) |
+| Alert notifications | The ntfy app, subscribed to the same topic ([iPhone](https://apps.apple.com/app/ntfy/id1625396347) · [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)) |
+
+**Tip:** in Safari, tap **Share → Add to Home Screen**. In Chrome, tap **⋮ → Add to Home screen**. The tracker then gets its own icon like an app.
+
+#### Adding a device away from home: pick an option
+
+| Option | How | Safe? | Use it for |
+|---|---|---|---|
+| **A. Your own Tailscale account** | Install Tailscale on the device and sign in **yourself** with your account. | ✅ Safe on **your own** devices | Your second phone, tablet or laptop |
+| **B. Share just the Pi** | They make their **own** free Tailscale account, and you send them a share link for the Pi only. | ✅ **Safest** for other people | Family members and friends |
+| **C. Give someone your login** | Tell them the email and password you use for Tailscale. | ❌ **Unsafe** | Never. That hands over your whole email account, not just the Pi. |
+| **D. Make the Pi public** | Open router ports or use a public tunnel. | ❌ **Unsafe** | Never. Anyone on the internet could reach a computer in your home, and the free data is for personal use only. |
+
+**Option A: your own devices**
+1. Install Tailscale: [iPhone](https://apps.apple.com/app/tailscale/id1470499037) · [Android](https://play.google.com/store/apps/details?id=com.tailscale.ipn) · [Windows, Mac and more](https://tailscale.com/download)
+2. Sign in with the **same** account the Pi uses, tap **Allow** for the VPN configuration, and switch it on.
+3. Open `http://raspberrypi:8000`, or `http://100.x.x.x:8000` using the address from `tailscale ip -4` on the Pi.
+
+This device can now reach **all** devices on your Tailscale account, so only use it on devices you own.
+
+**Option B: family and friends (recommended for anyone else)**
+1. **They** install Tailscale (links above) and create their **own** free account. Kids may need a parent's help.
+2. **You** open the [Tailscale admin console](https://login.tailscale.com/admin/machines), click **⋯** next to `raspberrypi`, choose **Share…**, and copy the invite link.
+3. Send them the link. **They** open it, sign in and accept.
+4. Your Pi appears in their Tailscale app. They switch Tailscale on and open `http://raspberrypi:8000`, or the `100.x.x.x` address.
+
+They can only reach the Pi, not your other devices. To remove someone, open the same **⋯ → Share…** menu in the admin console and revoke their access.
+
+#### Good to know with more devices
+
+- **Alerts are shared:** they're stored on the Pi, so every device sees and can change the same alerts. Give the ntfy topic only to people you trust, because anyone with it can read your alerts.
+- **Favorites are not shared:** ★ favorites are saved in each browser separately, so a new device starts with an empty list.
+- **Live slots are shared:** the free Finnhub key streams up to 45 stocks across **all** devices together. If several people look at different stocks at once, some update every minute instead of live.
+- **Your Pi handles a few devices easily.** It's built for a household, not hundreds of visitors.
+- **Never share** your Finnhub key, your account passwords, or `finnhub_key.txt`.
+
 ## Where the data comes from
 
 | Data | Source | How often |
@@ -176,6 +229,9 @@ The first time it starts, the Pi spends about 2–3 hours slowly downloading a y
 | `pip install` fails on an old Pi OS | This project only needs `requests` and `websocket-client`, which install fine on Bullseye. |
 | No alert notifications | Check the topic in the ntfy app matches the Alerts page exactly, then tap **Send test notification**. |
 | `http://raspberrypi:8000` doesn't open away from home | Make sure Tailscale is switched on in the phone app, or use the IP from `tailscale ip -4`. |
+| A family member's phone can't open it at home | Their phone must be on the **same Wi-Fi** as the Pi, not mobile data or a guest network. Use `http://<your-pi-ip>:8000`, not `https`. |
+| A shared person doesn't see the Pi in Tailscale | Check they accepted the invite link while signed in to **their** account, and that Tailscale is switched on. |
+| My favorites are missing on another device | That's expected. Favorites are saved per browser. Tap ☆ again on that device. |
 | An alert never fires | Price alerts fire only when the price **crosses** your level, and only during market hours. Test with "moves more than 0.1% in a day". |
 | `ssh: connect to host ... timed out` | Check the Pi is on and on the same Wi-Fi, and the IP is right (`hostname -I` on the Pi). Away from home, switch Tailscale on and use `ssh pi@raspberrypi`. |
 | Pi running hot | Check with `vcgencmd measure_temp`. With a small fan on pins 4 (5V) and 6 (GND), a Pi 4 stays around 35–50°C. |
