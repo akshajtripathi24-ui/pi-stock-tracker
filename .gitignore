@@ -1,0 +1,11 @@
+# Secrets: never commit your API key
+finnhub_key.txt
+
+# Data the Pi downloads while running
+history.json
+profiles.json
+*.tmp
+
+# Python
+venv/
+__pycache__/
