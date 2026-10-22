@@ -4,6 +4,8 @@ A web app that runs on a Raspberry Pi and tracks every US-listed stock (about 7,
 
 Open it from any phone or computer on your home Wi-Fi.
 
+![Pi Stock Tracker market page with live index cards and the top gainers and losers](docs/screenshot.png)
+
 ## Features
 
 - **Market page:** S&P 500, Nasdaq 100, Dow and Russell 2000, top gainers and losers (1D, 1W, 1M, 6M, YTD and 1Y), the most active stocks, and today's sector performance.
