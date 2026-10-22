@@ -13,6 +13,7 @@ Open it from any phone or computer on your home Wi-Fi.
 - **Search:** by company name, ticker or CEO name.
 - **Stock pages:** an interactive chart from 1 day to the stock's whole history, performance, key stats, and a company profile (CEO, employees, headquarters, website).
 - **Live prices (optional):** with a free [Finnhub](https://finnhub.io) API key, the stock you're viewing, what's on screen and your favorites update with every trade and flash green or red.
+- **🔔 Price alerts:** get a notification on your phone when a stock rises above or falls below a price, or moves more than a set % in a day. Uses the free [ntfy](https://ntfy.sh) app, with no account needed.
 - **★ Favorites**, **light and dark mode**, and a layout that works on phones.
 
 ## What you need
@@ -66,6 +67,30 @@ The tracker then runs in the background, starts whenever the Pi boots, and resta
 | Stop | `sudo systemctl stop stocktracker` |
 | Turn off auto-start | `sudo systemctl disable --now stocktracker` |
 
+### Price alerts on your phone
+
+1. Install the free **ntfy** app from the App Store or Google Play ([ntfy phone app guide](https://docs.ntfy.sh/subscribe/phone/)).
+2. Open the tracker's **🔔 Alerts** page. It shows a random topic name like `pi-stocks-1a2b3c4d5e6f7a8b`. In the app, tap **+** and subscribe to that topic.
+3. Tap **Send test notification** to check it works.
+4. Open any stock and use the **🔔 Price alerts** box to add an alert.
+
+The Pi checks alerts every 10 seconds. A price alert fires once each time the price crosses your level, and a "% move" alert fires at most once a day. Alerts are saved in `alerts.json` on the Pi, which is in `.gitignore`. Keep your topic name private: anyone who knows it could read your alerts.
+
+### Use it from anywhere, privately (Tailscale)
+
+[Tailscale](https://tailscale.com) is a free app that connects your own devices to each other, so you can open the tracker away from home without making it public. Ask a parent if you need help creating the account.
+
+On the Pi:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+`sudo tailscale up` prints a login link. Open it and sign in. Then install the **Tailscale** app on your phone and sign in with the **same account**.
+
+On your phone, with Tailscale switched on, open `http://raspberrypi:8000`. If that doesn't work, run `tailscale ip -4` on the Pi and open `http://<that-ip>:8000`. Tailscale starts by itself when the Pi boots.
+
 ## Where the data comes from
 
 | Data | Source | How often |
@@ -87,6 +112,8 @@ The first time it starts, the Pi spends about 2–3 hours slowly downloading a y
 | Badge says **● Live (market quiet)** | That's normal outside US market hours (9:30am–4pm Eastern, Mon–Fri). |
 | `Unit stocktracker.service not found` | Run `bash setup-autostart.sh` first. |
 | `pip install` fails on an old Pi OS | This project only needs `requests` and `websocket-client`, which install fine on Bullseye. |
+| No alert notifications | Check the topic in the ntfy app matches the Alerts page exactly, then tap **Send test notification**. |
+| `http://raspberrypi:8000` doesn't open away from home | Make sure Tailscale is switched on in the phone app, or use the IP from `tailscale ip -4`. |
 | Pi running hot | Check with `vcgencmd measure_temp`. With a small fan on pins 4 (5V) and 6 (GND), a Pi 4 stays around 35–50°C. |
 
 ## How it works

@@ -135,6 +135,17 @@
   @keyframes flashUp { from { background:var(--up-bg); color:var(--up); } }
   @keyframes flashDown { from { background:var(--down-bg); color:var(--down); } }
   .liveDot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--up); margin-left:6px; vertical-align:middle; animation:pulse 1.6s infinite; }
+  .alertForm { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .alertForm input { width:110px; border:1px solid var(--line); background:var(--card); border-radius:8px; padding:6px 8px; }
+  .btn { border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:8px; padding:6px 14px; cursor:pointer; font-weight:600; }
+  .btn.ghost { background:var(--card); color:var(--accent); }
+  .rule { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .rule:last-child { border-bottom:0; }
+  .x { border:0; background:none; color:var(--muted); cursor:pointer; font-size:16px; padding:2px 6px; }
+  .x:hover { color:var(--down); }
+  .msg { margin-top:8px; font-size:13px; }
+  .steps { margin:0; padding-left:20px; } .steps li { margin:6px 0; }
+  code.topic { background:var(--hover); padding:3px 8px; border-radius:6px; font-size:14px; user-select:all; }
   footer { max-width:1180px; margin:0 auto; padding:8px 16px 32px; color:var(--muted); font-size:12px; }
 </style>
 </head>
@@ -146,6 +157,7 @@
       <a href="#market" data-v="market">Market</a>
       <a href="#screener" data-v="screener">Screener</a>
       <a href="#favorites" data-v="favorites">★ Favorites</a>
+      <a href="#alerts" data-v="alerts">🔔 Alerts</a>
     </nav>
     <div id="searchWrap">
       <input id="search" placeholder="Search stocks, tickers or CEOs…" autocomplete="off">
@@ -167,6 +179,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const api = async path => { const r = await fetch(path); if (!r.ok) throw new Error(r.status); return r.json(); };
+const post = async (path, body) => (await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})).json();
 const money = n => n == null ? "–" : "$" + n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 4 : 2});
 const big = n => n == null || !n ? "–" : n >= 1e12 ? (n/1e12).toFixed(2) + "T" : n >= 1e9 ? (n/1e9).toFixed(2) + "B" : n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? (n/1e3).toFixed(1) + "K" : String(Math.round(n));
 const cls = n => n == null ? "muted" : n >= 0 ? "up" : "down";
@@ -420,6 +433,59 @@ async function loadTable() {
   });
 }
 
+// ---------- price alerts ----------
+const ruleText = r => r.kind === "move" ? `moves more than ${r.value}% in a day` : `${r.kind === "above" ? "rises above" : "falls below"} ${money(r.value)}`;
+const ruleHTML = (r, showSym) => `<div class="rule"><span>${showSym ? `<a data-go="${esc(r.symbol)}" style="cursor:pointer"><b>${esc(r.symbol)}</b></a> ` : ""}${ruleText(r)}
+  ${r.kind !== "move" && r.armed === false ? '<span class="muted small">(waiting for it to cross again)</span>' : ""}</span>
+  <span>${showSym ? `<span class="muted small" style="margin-right:8px">now ${money(r.price)}</span>` : ""}<button class="x" data-del="${esc(r.id)}" title="Delete alert">✕</button></span></div>`;
+
+function setupStockAlerts(q) {
+  const kind = $("#aKind"), value = $("#aValue"), msg = $("#aMsg");
+  const suggest = () => { value.value = kind.value === "move" ? 5 : (q.price * (kind.value === "above" ? 1.05 : 0.95)).toFixed(2); };
+  kind.onchange = suggest; suggest();
+  const load = async () => {
+    const d = await api("/api/alerts?symbol=" + encodeURIComponent(q.symbol));
+    if (!$("#aList")) return;
+    $("#aList").innerHTML = d.rules.map(r => ruleHTML(r, false)).join("") || '<div class="muted small">No alerts for this stock yet.</div>';
+  };
+  $("#aAdd").onclick = async () => {
+    const r = await post("/api/alerts", {action: "add", symbol: q.symbol, kind: kind.value, value: value.value});
+    msg.className = "msg " + (r.ok ? "up" : "down");
+    msg.textContent = r.ok ? (r.note || "Alert added ✓") : r.error;
+    load();
+  };
+  $("#aList").onclick = async e => { const b = e.target.closest("[data-del]"); if (b) { await post("/api/alerts", {action: "delete", id: b.dataset.del}); load(); } };
+  load();
+}
+
+async function renderAlerts() {
+  view.innerHTML = '<div class="card skeleton">Loading alerts…</div>';
+  const d = await api("/api/alerts");
+  if (location.hash !== "#alerts") return;
+  view.innerHTML = `
+    <div class="card"><div class="cardHead"><h2>📱 Get alerts on your phone</h2></div>
+      <ol class="steps">
+        <li>Install the free <b>ntfy</b> app (App Store or Google Play). No account needed.</li>
+        <li>In the app, tap <b>+</b> and subscribe to this topic: <code class="topic">${esc(d.topic)}</code>
+          <button class="btn ghost" id="copyTopic" style="margin-left:6px">Copy</button></li>
+        <li>Tap <button class="btn" id="testBtn">Send test notification</button> and check your phone. <span class="msg" id="testMsg"></span></li>
+      </ol>
+      <p class="muted small">Keep the topic private: anyone who knows it could read your alerts. To add an alert, open any stock and use the 🔔 Price alerts box.</p>
+    </div>
+    <div class="card"><div class="cardHead"><h2>🔔 Your alerts</h2><span class="muted small">checked every 10 seconds</span></div>
+      <div id="rules">${d.rules.map(r => ruleHTML(r, true)).join("") || '<div class="empty">No alerts yet. Open a stock (search above) and add one.</div>'}</div></div>
+    <div class="card"><div class="cardHead"><h2>Recent notifications</h2></div>
+      ${d.log.map(l => `<div class="rule"><span>${esc(l.text)}</span><span class="muted small">${esc(l.time)}${l.sent ? "" : " · not sent"}</span></div>`).join("") || '<div class="muted small">None yet.</div>'}</div>`;
+  $("#copyTopic").onclick = async () => { try { await navigator.clipboard.writeText(d.topic); $("#copyTopic").textContent = "Copied ✓"; } catch { $("#copyTopic").textContent = "Select it and copy"; } };
+  $("#testBtn").onclick = async () => {
+    $("#testMsg").textContent = "Sending…";
+    const r = await post("/api/alerts", {action: "test"});
+    $("#testMsg").className = "msg " + (r.ok ? "up" : "down");
+    $("#testMsg").textContent = r.ok ? "Sent! It should pop up on your phone in a few seconds." : r.error;
+  };
+  $("#rules").onclick = async e => { const b = e.target.closest("[data-del]"); if (b) { await post("/api/alerts", {action: "delete", id: b.dataset.del}); renderAlerts(); } };
+}
+
 const favState = {sort: "1d", order: "desc"};
 async function renderFavorites() {
   if (!favs.length) {
@@ -456,6 +522,16 @@ async function renderStock(sym) {
       <div style="margin-top:14px">${seg(RANGES, "1y", "range")}</div>
       <div class="chartBox"><canvas id="chart"></canvas><div id="chartMsg" class="skeleton"></div></div>
     </div>
+    <div class="card"><div class="cardHead"><h2>🔔 Price alerts</h2><a class="small" href="#alerts">Set up phone notifications →</a></div>
+      <div class="alertForm">
+        <span class="muted">Notify me when ${esc(q.symbol)}</span>
+        <select id="aKind"><option value="above">rises above $</option><option value="below">falls below $</option><option value="move">moves more than % in a day</option></select>
+        <input id="aValue" type="number" step="any" min="0" inputmode="decimal">
+        <button class="btn" id="aAdd">Add alert</button>
+      </div>
+      <div class="msg" id="aMsg"></div>
+      <div id="aList"></div>
+    </div>
     <div class="card"><div class="cardHead"><h2>Performance</h2></div>
       <div class="perf">${PERIODS.map(([k, l]) => `<div><span class="muted small">${l}</span><b class="${cls(q[k])}" ${k === "1d" ? `data-lc="${esc(q.symbol)}" data-base=""` : ""}>${pctTxt(q[k])}</b></div>`).join("")}</div></div>
     <div class="grid g2">
@@ -482,6 +558,7 @@ async function renderStock(sym) {
     drawChart(sym, b.dataset.range);
   });
   drawChart(sym, "1y");
+  setupStockAlerts(q);
 }
 
 async function drawChart(sym, range) {
@@ -526,6 +603,7 @@ function route() {
   if (name === "stock") return renderStock(h.slice(6).toUpperCase());
   if (name === "screener") return renderScreener();
   if (name === "favorites") return renderFavorites();
+  if (name === "alerts") return renderAlerts();
   renderMarket();
   let ticks = 0;
   refreshTimer = setInterval(() => {

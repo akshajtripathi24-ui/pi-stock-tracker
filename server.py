@@ -3,8 +3,9 @@
 Run:  python server.py   then open http://<your-pi-ip>:8000
 Needs: pip install requests websocket-client
 Live prices: put your free Finnhub API key in finnhub_key.txt next to this file.
+Price alerts: install the free ntfy app and subscribe to the topic shown on the Alerts page.
 """
-import csv, io, json, os, re, threading, time
+import csv, io, json, os, re, secrets, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -318,6 +319,12 @@ def live_targets():
         f = fh_symbol(sym)
         if f not in out and "^" not in f:
             out.append(f)
+    for rule in list(alerts["rules"]):     # then stocks with alerts, if there's room
+        f = fh_symbol(rule["symbol"])
+        if len(out) >= live_state["cap"]:
+            break
+        if f not in out and "^" not in f:
+            out.append(f)
     for sym in [s for s, t in list(live_wanted.items()) if now - t > 600]:
         live_wanted.pop(sym, None)
     return set(out)
@@ -585,6 +592,140 @@ def api_status():
                 live_error=live_state["error"])
 
 
+# ---------- price alerts (phone notifications via ntfy.sh) ----------
+
+ALERTS_FILE = os.path.join(HERE, "alerts.json")
+NTFY_URL = "https://ntfy.sh/{}"
+ALERT_CHECK = 10            # seconds between alert checks
+ALERT_KINDS = ("above", "below", "move")
+alerts_lock = threading.RLock()
+alerts = {"topic": "", "rules": [], "log": []}
+
+
+def save_alerts():
+    with alerts_lock:
+        save_json(ALERTS_FILE, alerts)
+
+
+def load_alerts():
+    data = load_json(ALERTS_FILE)
+    alerts.update({k: data[k] for k in ("topic", "rules", "log") if k in data})
+    if not alerts["topic"]:
+        alerts["topic"] = "pi-stocks-" + secrets.token_hex(8)   # random, so nobody can guess it
+        save_alerts()
+
+
+def notify(title, message, tags="chart_with_upwards_trend"):
+    try:
+        r = requests.post(NTFY_URL.format(alerts["topic"]), data=message.encode("utf-8"),
+                          headers={"Title": title, "Tags": tags}, timeout=10)
+        return r.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def alert_quote(sym):
+    """(price, today's % change) using live prices when available."""
+    with lock:
+        s = stocks.get(sym)
+    if not s or s["price"] is None:
+        return None
+    r = row_for(s)
+    return r["price"], r["1d"]
+
+
+def check_rule(rule, price, change, today):
+    """Return the notification text if this rule should fire now."""
+    sym, value = rule["symbol"], rule["value"]
+    if rule["kind"] == "move":
+        if change is not None and abs(change) >= value and rule.get("fired_on") != today:
+            rule["fired_on"] = today                     # at most once a day
+            return f"{sym} is {'up' if change >= 0 else 'down'} {abs(change):.1f}% today at ${price:,.2f}"
+        return None
+    above = rule["kind"] == "above"
+    crossed = price >= value if above else price <= value
+    if crossed and rule.get("armed", True):
+        rule["armed"] = False                            # fire once per crossing
+        return f"{sym} {'rose above' if above else 'fell below'} ${value:,.2f} (now ${price:,.2f})"
+    if not crossed and not rule.get("armed", True):
+        # re-arm once the price is clearly back on the other side, so small wiggles don't spam you
+        if (price < value * 0.995) if above else (price > value * 1.005):
+            rule["armed"] = True
+    return None
+
+
+def check_alerts_forever():
+    while True:
+        time.sleep(ALERT_CHECK)
+        today = datetime.now().strftime("%Y-%m-%d")
+        fired = []
+        with alerts_lock:
+            for rule in alerts["rules"]:
+                q = alert_quote(rule["symbol"])
+                text = check_rule(rule, q[0], q[1], today) if q else None
+                if text:
+                    fired.append((rule["symbol"], text))
+        for sym, text in fired:
+            sent = notify(f"{sym} price alert", text)
+            print(("Alert sent: " if sent else "Alert NOT sent (no internet?): ") + text)
+            with alerts_lock:
+                alerts["log"] = (alerts["log"] + [{"time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                                   "symbol": sym, "text": text, "sent": sent}])[-100:]
+        if fired:
+            save_alerts()
+
+
+def api_alerts_get(qs):
+    sym = qs.get("symbol", [""])[0].upper()
+    with alerts_lock:
+        rules = [dict(r) for r in alerts["rules"] if not sym or r["symbol"] == sym]
+        log = alerts["log"][-30:][::-1]
+        topic = alerts["topic"]
+    for r in rules:
+        q = alert_quote(r["symbol"])
+        r["price"] = q[0] if q else None
+    return {"topic": topic, "rules": rules, "log": log}
+
+
+def api_alerts_post(body):
+    action = body.get("action")
+    if action == "test":
+        ok = notify("Pi Stock Tracker", "Test notification - your price alerts are working!", "white_check_mark")
+        return {"ok": ok, "error": None if ok else "Couldn't reach ntfy.sh - is the Pi online?"}
+    if action == "delete":
+        with alerts_lock:
+            alerts["rules"] = [r for r in alerts["rules"] if r["id"] != body.get("id")]
+        save_alerts()
+        return {"ok": True}
+    if action != "add":
+        return {"ok": False, "error": "Unknown action"}
+    sym, kind = str(body.get("symbol", "")).upper(), body.get("kind")
+    try:
+        value = float(body.get("value"))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "Enter a number"}
+    if kind not in ALERT_KINDS or not 0 < value < 10_000_000:
+        return {"ok": False, "error": "Enter a number above 0"}
+    q = alert_quote(sym)
+    if not q:
+        return {"ok": False, "error": "Unknown stock"}
+    rule = {"id": secrets.token_hex(4), "symbol": sym, "kind": kind, "value": value,
+            "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    note = ""
+    if kind != "move":
+        above = kind == "above"
+        rule["armed"] = q[0] < value if above else q[0] > value
+        if not rule["armed"]:
+            note = (f"{sym} is already {'above' if above else 'below'} ${value:,.2f}. You'll get a notification "
+                    f"the next time it {'rises above' if above else 'falls below'} it.")
+    with alerts_lock:
+        if len(alerts["rules"]) >= 100:
+            return {"ok": False, "error": "You can have up to 100 alerts"}
+        alerts["rules"].append(rule)
+    save_alerts()
+    return {"ok": True, "note": note}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
@@ -607,12 +748,31 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(api_status())
             if url.path == "/api/live":
                 return self.send_json(api_live(qs))
+            if url.path == "/api/alerts":
+                return self.send_json(api_alerts_get(qs))
             if url.path == "/api/quote":
                 data = api_quote(sym) if valid else None
                 return self.send_json(data or {"error": "Unknown stock"}, 200 if data else 404)
             if url.path == "/api/chart":
                 data = api_chart(sym, qs.get("range", ["1y"])[0]) if valid else None
                 return self.send_json(data or {"error": "No chart data"}, 200 if data else 404)
+            self.send(b"Not found", "text/plain", 404)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        # Only accept JSON: browsers won't let other websites send that to the Pi without asking first
+        if not self.headers.get("Content-Type", "").startswith("application/json"):
+            return self.send_json({"ok": False, "error": "Expected JSON"}, 415)
+        try:
+            length = min(int(self.headers.get("Content-Length") or 0), 10000)
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, OSError):
+            return self.send_json({"ok": False, "error": "Bad request"}, 400)
+        try:
+            if url.path == "/api/alerts" and isinstance(body, dict):
+                return self.send_json(api_alerts_post(body))
             self.send(b"Not found", "text/plain", 404)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -635,6 +795,8 @@ if __name__ == "__main__":
     threading.Thread(target=refresh_prices_forever, daemon=True).start()
     threading.Thread(target=crawl_forever, daemon=True).start()
     start_live()
+    load_alerts()
+    threading.Thread(target=check_alerts_forever, daemon=True).start()
     print(f"Website running! Open http://<your-pi-ip>:{PORT}  (Ctrl+C to stop)")
     print("Loading all US stocks... the first price download takes a few seconds.")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

@@ -1,5 +1,6 @@
-# Secrets: never commit your API key
+# Secrets: never commit your API key or your alert topic
 finnhub_key.txt
+alerts.json
 
 # Data the Pi downloads while running
 history.json
